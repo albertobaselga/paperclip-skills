@@ -1,6 +1,6 @@
 # Paperclip Skills
 
-A collection of skills for AI coding agents to manage [Paperclip](https://github.com/paperclip-ai) instances. Skills are packaged instructions that extend agent capabilities for setup, administration, and day-to-day operations.
+A collection of skills for AI coding agents to manage [Paperclip](https://github.com/paperclipai/paperclip) instances. Skills are packaged instructions that extend agent capabilities for setup, administration, and day-to-day operations.
 
 Skills follow the [Agent Skills](https://agentskills.io/) format.
 
