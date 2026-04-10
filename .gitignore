@@ -1,0 +1,6 @@
+# Local AI agent config
+.claude/
+.omc/
+
+# ACE learning playbooks (local to each user)
+ace-*-playbook.md
