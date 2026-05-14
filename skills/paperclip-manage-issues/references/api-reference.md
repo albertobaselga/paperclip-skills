@@ -119,7 +119,7 @@ Full JSON response from `GET /api/issues/:id`:
 
 ## Create Issue Request
 
-`POST /api/issues`
+`POST /api/companies/:companyId/issues`
 
 ```json
 {
@@ -208,7 +208,7 @@ Returns the issue record with updated `checkoutRunId` and `status` set to `in_pr
 
 ## Work Product Schema
 
-`POST /api/issues/:id/work-products`
+`POST /api/issues/:id/work-products` (not in official docs; verified in `server/src/routes/issues.ts`)
 
 ```json
 {
@@ -274,7 +274,7 @@ Returns the issue record with updated `checkoutRunId` and `status` set to `in_pr
 
 ## Label Schema
 
-`POST /api/projects/:projectId/labels`
+`POST /api/companies/:companyId/labels` (not in official docs; verified in `server/src/routes/issues.ts`)
 
 ```json
 {
@@ -289,7 +289,7 @@ Common colors: `ef4444` (red/bug), `f97316` (orange/warning), `3b82f6` (blue/fea
 
 ## Attachment Upload
 
-`POST /api/issues/:id/attachments`
+`POST /api/companies/:companyId/issues/:issueId/attachments`
 
 `Content-Type: multipart/form-data`
 
@@ -300,7 +300,7 @@ Common colors: `ef4444` (red/bug), `f97316` (orange/warning), `3b82f6` (blue/fea
 
 Example (curl):
 ```bash
-curl -X POST /api/issues/iss_01hx9k2m3n4p5q6r7s8t/attachments \
+curl -X POST /api/companies/cmp_01hx9k2m3n4p5q6r7s8t/issues/iss_01hx9k2m3n4p5q6r7s8t/attachments \
   -F "file=@screenshot.png" \
   -F "issueCommentId=cmt_01hx9k2m3n4p5q6r7s8t"
 ```

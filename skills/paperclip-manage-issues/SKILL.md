@@ -38,9 +38,12 @@ pnpm paperclipai issue get $ISSUE_ID
 pnpm paperclipai issue get PROJ-42
 ```
 
-Valid `status` values: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`
+Valid `status` values (non-terminal): `backlog`, `todo`, `in_progress`, `in_review`, `blocked`
+Valid `status` values (terminal): `done`, `cancelled`
 
 Valid `priority` values: `critical`, `high`, `medium`, `low`
+
+Supported list query params: `status`, `assigneeAgentId`, `participantAgentId`, `assigneeUserId`, `touchedByUserId`, `inboxArchivedByUserId`, `unreadForUserId`, `projectId`, `executionWorkspaceId`, `parentId`, `labelId`, `originKind`, `originId`, `includeRoutineExecutions`, `q`, `limit`.
 
 ---
 
@@ -115,7 +118,7 @@ curl -s -X PATCH "$BASE/api/issues/$ISSUE_ID" \
     "assigneeAgentId": null
   }' | jq '.'
 
-# Delete an issue
+# Delete an issue (not in official docs; verified in server/src/routes/issues.ts)
 curl -s -X DELETE "$BASE/api/issues/$ISSUE_ID" | jq '.'
 ```
 
@@ -137,6 +140,8 @@ pnpm paperclipai issue checkout $ISSUE_ID \
 # Release (agent done or handing back)
 pnpm paperclipai issue release $ISSUE_ID
 ```
+
+Note: When called with agent (bearer) auth, both checkout and release require the `X-Paperclip-Run-Id` header tying the action to the agent's current heartbeat run. Board auth does not require it.
 
 ---
 
@@ -161,6 +166,8 @@ curl -s "$BASE/api/issues/$ISSUE_ID/comments/$COMMENT_ID" | jq '.'
 ---
 
 ## Labels
+
+> Not in official docs (docs.paperclip.ing); verified in `server/src/routes/issues.ts`. Verify before use.
 
 ```bash
 # List all labels in the company
@@ -218,13 +225,20 @@ curl -s -X PUT "$BASE/api/issues/$ISSUE_ID/documents/plan" \
 # View revision history
 curl -s "$BASE/api/issues/$ISSUE_ID/documents/plan/revisions" | jq '.'
 
-# Delete a document
+# Restore a previous revision
+curl -s -X POST "$BASE/api/issues/$ISSUE_ID/documents/plan/revisions/$REVISION_ID/restore" | jq '.'
+
+# Delete a document (board only)
 curl -s -X DELETE "$BASE/api/issues/$ISSUE_ID/documents/plan" | jq '.'
 ```
+
+Note: `PUT` document body limit is 512 KiB, `format` must be `markdown`, and `baseRevisionId` is required on updates (stale base returns 409).
 
 ---
 
 ## Work Products
+
+> Not in official docs (docs.paperclip.ing); verified in `server/src/routes/issues.ts`. Verify before use.
 
 Work products link an issue to its real-world output (PR, branch, preview URL, artifact, etc.).
 
@@ -276,6 +290,37 @@ curl -s -X DELETE "$BASE/api/issues/$ISSUE_ID/approvals/$APPROVAL_ID" | jq '.'
 
 ---
 
+## Interactions
+
+Agent-initiated interactions on an issue: suggest tasks, ask user questions, or request confirmation.
+
+```bash
+# List interactions on an issue
+curl -s "$BASE/api/issues/$ISSUE_ID/interactions" | jq '.'
+
+# Create an interaction (agent context)
+curl -s -X POST "$BASE/api/issues/$ISSUE_ID/interactions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "ask_user_questions",
+    "payload": {"questions": ["Should we use GitHub OAuth or Google OAuth first?"]},
+    "continuationPolicy": "wake_requester",
+    "idempotencyKey": "ask-oauth-provider-001"
+  }' | jq '.'
+
+# Accept / reject / respond
+curl -s -X POST "$BASE/api/issues/$ISSUE_ID/interactions/$INTERACTION_ID/accept" | jq '.'
+curl -s -X POST "$BASE/api/issues/$ISSUE_ID/interactions/$INTERACTION_ID/reject" | jq '.'
+curl -s -X POST "$BASE/api/issues/$ISSUE_ID/interactions/$INTERACTION_ID/respond" \
+  -H "Content-Type: application/json" \
+  -d '{"response": {"answer": "Start with GitHub"}}' | jq '.'
+```
+
+Valid `kind` values: `suggest_tasks`, `ask_user_questions`, `request_confirmation`
+Valid `continuationPolicy` values: `wake_assignee`, `wake_requester`
+
+---
+
 ## Attachments
 
 ```bash
@@ -304,19 +349,28 @@ curl -s "$BASE/api/issues/$ISSUE_ID/activity" | jq '.'
 # All agent runs associated with the issue
 curl -s "$BASE/api/issues/$ISSUE_ID/runs" | jq '.'
 
-# Currently live runs
-curl -s "$BASE/api/issues/$ISSUE_ID/live-runs" | jq '.'
-
-# Active run (singular)
-curl -s "$BASE/api/issues/$ISSUE_ID/active-run" | jq '.'
+# Issues touched by a specific heartbeat run
+curl -s "$BASE/api/heartbeat-runs/$RUN_ID/issues" | jq '.'
 
 # Heartbeat context (what the agent sees)
 curl -s "$BASE/api/issues/$ISSUE_ID/heartbeat-context" | jq '.'
 ```
 
+> The following are not in official docs (docs.paperclip.ing) but exist in `server/src/routes/agents.ts`. Verify before use.
+
+```bash
+# Currently live runs on the issue
+curl -s "$BASE/api/issues/$ISSUE_ID/live-runs" | jq '.'
+
+# Active run (singular)
+curl -s "$BASE/api/issues/$ISSUE_ID/active-run" | jq '.'
+```
+
 ---
 
 ## Read / Inbox State
+
+> Not in official docs (docs.paperclip.ing); verified in `server/src/routes/issues.ts`. Verify before use.
 
 ```bash
 # Mark issue as read
@@ -336,17 +390,22 @@ curl -s -X DELETE "$BASE/api/issues/$ISSUE_ID/inbox-archive" | jq '.'
 
 ## Feedback
 
+> Not in official docs (docs.paperclip.ing); verified in `server/src/routes/issues.ts`. Verify before use.
+
 ```bash
 # Get feedback votes
 curl -s "$BASE/api/issues/$ISSUE_ID/feedback-votes" | jq '.'
-
-# Get feedback traces
-curl -s "$BASE/api/issues/$ISSUE_ID/feedback-traces" | jq '.'
 
 # Submit a feedback vote
 curl -s -X POST "$BASE/api/issues/$ISSUE_ID/feedback-votes" \
   -H "Content-Type: application/json" \
   -d '{"vote": "up"}' | jq '.'
+```
+
+Company-level feedback traces (official):
+
+```bash
+curl -s "$BASE/api/companies/$CID/feedback-traces?targetType=issue&issueId=$ISSUE_ID" | jq '.'
 ```
 
 ---

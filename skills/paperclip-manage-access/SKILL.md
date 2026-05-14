@@ -7,6 +7,26 @@ description: Manage Paperclip access control — create invites, handle join req
 
 Access control covers CLI authentication, company invites, join request approvals, member permission grants, and instance-admin user administration.
 
+## Authentication Model
+
+**Token types:**
+- **Board API keys** — long-lived, prefixed `pcp_board_`. Minted via CLI auth challenge flow.
+- **Agent API keys** — long-lived per-agent tokens. Minted via `POST /api/agents/:id/keys` or join-request claim.
+- **Local agent JWTs** — short-lived tokens for local-mode agents.
+- **Session cookies** — issued by web UI login (authenticated deployments).
+
+**Headers:**
+- `Authorization: Bearer <token>` — required for all non-session auth.
+- `X-Paperclip-Run-Id: <run-id>` — required when an agent token mutates a checked-out issue, and on checkout/release calls.
+
+**Resolution order:** local trust mode → session cookie → board API key → agent API key → local JWT → unauthenticated.
+
+**Scope rules:**
+- Agents are bound to their company; cross-company access returns 403.
+- Board actors are limited to companies they're members of.
+- Instance admins can act cross-company.
+- `local_trusted` mode bypasses membership checks.
+
 ## Prerequisites
 
 - Board operator role on the target company (most operations)
@@ -82,7 +102,16 @@ curl -s -X POST "$BASE/api/board-claim/$TOKEN/claim" \
 
 ## CLI Auth Challenges (API)
 
-The CLI login flow uses a challenge/approval model. These endpoints are used internally by `auth login` but can also be driven directly.
+Public endpoints. The CLI login flow uses a challenge/approval model; the `auth login` command drives these, but they can also be called directly.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/cli-auth/challenges` | Initiate challenge |
+| GET | `/api/cli-auth/challenges/:id` | Poll status (returns `token` when approved) |
+| POST | `/api/cli-auth/challenges/:id/approve` | Mint board key (requires authenticated approver) |
+| POST | `/api/cli-auth/challenges/:id/cancel` | Reject |
+| GET | `/api/cli-auth/me` | Inspect current identity |
+| POST | `/api/cli-auth/revoke-current` | Revoke active key |
 
 ```bash
 # Create a challenge

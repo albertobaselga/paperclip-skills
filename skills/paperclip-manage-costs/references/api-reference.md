@@ -81,7 +81,11 @@ Base path: `/api/companies/:cid`
 
 ## Cost Event Request
 
-`POST /api/companies/:cid/costs/events`
+`POST /api/companies/:cid/cost-events`
+
+Required: `agentId`, `provider`, `model`, `costCents`, `occurredAt`.
+Optional: `issueId`, `projectId`, `goalId`, `heartbeatRunId`, `billingCode`,
+`biller`, `billingType`, `inputTokens`, `cachedInputTokens`, `outputTokens`.
 
 ```json
 {
@@ -94,7 +98,7 @@ Base path: `/api/companies/:cid`
 
 ## Finance Event Request
 
-`POST /api/companies/:cid/finance/events`
+`POST /api/companies/:cid/finance-events` (board-only)
 
 ```json
 {
@@ -107,7 +111,10 @@ Base path: `/api/companies/:cid`
 
 ## Finance Summary Response
 
-`GET /api/companies/:cid/finance/summary`
+`GET /api/companies/:cid/costs/finance-summary`
+
+Related: `costs/finance-by-biller`, `costs/finance-by-kind`,
+`costs/finance-events?from&to&limit(1-500,d=100)`, `costs/quota-windows` (board-only).
 
 ```json
 {
@@ -154,10 +161,15 @@ Base path: `/api/companies/:cid`
 
 ## Budget Incident Resolution
 
-`POST /api/companies/:cid/budgets/incidents/:incidentId/resolve`
+`POST /api/companies/:cid/budget-incidents/:incidentId/resolve`
 
 ```json
-{ "action": "raise_budget_and_resume", "amount": 10000, "decisionNote": "Approved by board" }
+{ "action": "raise_budget_and_resume", "amount": 10000 }
 ```
 
-`action`: `acknowledge` | `raise_budget_and_resume` | `dismiss`
+`action`: `keep_paused` | `raise_budget_and_resume`
+
+## Company / Agent Budget Updates
+
+`PATCH /api/companies/:cid/budgets` — body: `{ "budgetMonthlyCents": <int> }`
+`PATCH /api/agents/:agentId/budgets` — body: `{ "budgetMonthlyCents": <int> }`

@@ -64,18 +64,22 @@ Valid `status` values: `backlog`, `planned`, `in_progress`, `completed`, `cancel
 
 Valid `executionWorkspacePolicy` values: `inherit`, `shared_workspace`, `isolated_workspace`, `operator_branch`, `reuse_existing`, `agent_default`
 
+POST `/api/companies/{cid}/projects` body fields per canonical reference: `name` (req), `description?`, `status?`, `leadAgentId?`, `targetDate?`, `goalIds?`, `workspace?`, `env?`, `executionWorkspacePolicy?` (the inline `workspace` object follows the create-workspace shape below).
+
 ---
 
 ## Updating a Project
 
 ```bash
-# Update status, description, lead agent, or policy
+# Patchable fields per canonical: status?, goalIds?, targetDate?, archivedAt?, env?
+# (Other fields like name/description/leadAgentId/executionWorkspacePolicy may be
+# accepted by the live route — check the server validator before relying on them.)
 curl -s -X PATCH "$BASE/api/projects/$PROJECT_ID" \
   -H "Content-Type: application/json" \
   -d '{
     "status": "in_progress",
-    "leadAgentId": "agent-uuid-here",
-    "executionWorkspacePolicy": "shared_workspace"
+    "goalIds": [],
+    "targetDate": null
   }' | jq '.'
 
 # Archive a project (triggers cleanup)
@@ -105,26 +109,25 @@ curl -s "$BASE/api/projects/$PROJECT_ID/workspaces" | jq '.'
 
 ### Create a Workspace
 
+Canonical create body: `name` (req), `cwd?`, `repoUrl?`, `repoRef?`, `isPrimary?`.
+The live route additionally accepts `sourceType`, `setupCommand`, `cleanupCommand`,
+`runtimeConfig`, `remoteProvider`, `remoteWorkspaceRef`, `sharedWorkspaceKey`, `metadata`.
+
 ```bash
 curl -s -X POST "$BASE/api/projects/$PROJECT_ID/workspaces" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "feature-branch",
-    "sourceType": "local",
     "cwd": "/home/user/projects/backend-api",
     "isPrimary": false,
-    "visibility": "private",
-    "setupCommand": "pnpm install",
-    "cleanupCommand": null,
-    "runtimeConfig": {},
-    "remoteProvider": null,
-    "remoteWorkspaceRef": null,
-    "sharedWorkspaceKey": null,
-    "metadata": {}
+    "setupCommand": "pnpm install"
   }' | jq '.'
 ```
 
 ### Update a Workspace
+
+PATCH accepts many fields including `name`, `setupCommand`, `cleanupCommand`,
+`remoteProvider`, `remoteWorkspaceRef`, `sharedWorkspaceKey`, `metadata`, `runtimeConfig`.
 
 ```bash
 curl -s -X PATCH "$BASE/api/projects/$PROJECT_ID/workspaces/$WORKSPACE_ID" \

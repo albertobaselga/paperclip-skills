@@ -20,6 +20,8 @@ TYPE="<adapter-type>"   # e.g. claude_local, codex_local
 
 There is no dedicated CLI for adapter management — use the API endpoints below.
 
+> Adapter registry endpoints (`/api/adapters/...`) are part of the public API reference. Per-company adapter helpers (`/api/companies/:companyId/adapters/:type/...`) are documented under the Agents group.
+
 ## Built-in Adapter Types
 
 | Type | Agent |
@@ -141,6 +143,24 @@ Some adapters ship a custom JavaScript parser for rendering their log output in 
 
 ```bash
 curl -s "$BASE/api/adapters/$TYPE/ui-parser.js"
+```
+
+## Per-Company Adapter Helpers (canonical)
+
+These are documented in the public API reference under the Agents group and are useful when wiring an adapter into a specific company's agents:
+
+```bash
+CID="<company-id>"
+
+# List available models for the adapter type in this company's context
+curl -s "$BASE/api/companies/$CID/adapters/$TYPE/models" | jq
+
+# Detect the best/default model
+curl -s "$BASE/api/companies/$CID/adapters/$TYPE/detect-model" | jq
+
+# Run an environment self-test (paths, binaries, auth)
+curl -s -X POST "$BASE/api/companies/$CID/adapters/$TYPE/test-environment" \
+  -H "Content-Type: application/json" -d '{}' | jq
 ```
 
 ## Adapter Documentation

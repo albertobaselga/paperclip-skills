@@ -7,6 +7,8 @@ description: Manage Paperclip plugins — install from npm or local path, config
 
 Plugins extend Paperclip with new tools, UI contributions, scheduled jobs, and webhook endpoints. They are installed from npm or a local path and managed via CLI or API.
 
+> Plugin endpoints (`/api/plugins/...`) are part of the public API reference. The plugin runtime is currently **alpha** — request/response shapes may change between releases.
+
 ## Prerequisites
 
 - Board operator role on the target company
@@ -230,6 +232,42 @@ curl -s -X POST "$BASE/api/plugins/$PID/bridge/action" \
 # Subscribe to SSE stream
 CHANNEL="<channel-name>"
 curl -s "$BASE/api/plugins/$PID/bridge/stream/$CHANNEL"
+
+# Keyed data write (worker bridge)
+KEY="<key>"
+curl -s -X POST "$BASE/api/plugins/$PID/data/$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"value": "..."}' | jq
+
+# Keyed action dispatch (worker bridge)
+curl -s -X POST "$BASE/api/plugins/$PID/actions/$KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"args": {}}' | jq
+```
+
+## Local Folder Mounts
+
+Plugins may declare local folder mounts that grant the plugin access to a host path on a per-company basis.
+
+```bash
+CID="<company-id>"
+FKEY="<folder-key>"
+
+# List declared folder mounts and their bindings
+curl -s "$BASE/api/plugins/$PID/companies/$CID/local-folders" | jq
+
+# Mount status (resolved path, exists, permissions)
+curl -s "$BASE/api/plugins/$PID/companies/$CID/local-folders/$FKEY/status" | jq
+
+# Validate a candidate path without persisting
+curl -s -X POST "$BASE/api/plugins/$PID/companies/$CID/local-folders/$FKEY/validate" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/absolute/path"}' | jq
+
+# Persist a folder binding
+curl -s -X PUT "$BASE/api/plugins/$PID/companies/$CID/local-folders/$FKEY" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/absolute/path"}' | jq
 ```
 
 ## Workflow 1: Install and Configure a Plugin
