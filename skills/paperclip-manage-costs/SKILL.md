@@ -54,10 +54,10 @@ curl -s "$BASE/api/companies/$CID/costs/by-project" | jq '.'
 ### Budget Tracking Windows
 
 ```bash
-# Current-window spend for budget policy tracking
+# Current-window spend for budget policy tracking (5h / 24h / 7d windows)
 curl -s "$BASE/api/companies/$CID/costs/window-spend" | jq '.'
 
-# External quota window data
+# External quota window data (BOARD-ONLY)
 curl -s "$BASE/api/companies/$CID/costs/quota-windows" | jq '.'
 ```
 
@@ -75,13 +75,13 @@ curl -s "$BASE/api/companies/$CID/costs/finance-by-biller" | jq '.'
 # Finance breakdown by event kind
 curl -s "$BASE/api/companies/$CID/costs/finance-by-kind" | jq '.'
 
-# List finance events
+# List finance events (q: from, to, limit 1-500, default 100)
 curl -s "$BASE/api/companies/$CID/costs/finance-events" | jq '.'
 
 # With filters
 curl -s "$BASE/api/companies/$CID/costs/finance-events?from=2024-01-01&to=2024-01-31&limit=50" | jq '.'
 
-# Record a finance event (board operator only)
+# Record a finance event (BOARD-ONLY) — POST to /finance-events (no /costs prefix)
 curl -s -X POST "$BASE/api/companies/$CID/finance-events" \
   -H "Content-Type: application/json" \
   -d '{
@@ -98,13 +98,19 @@ curl -s -X POST "$BASE/api/companies/$CID/finance-events" \
 
 ```bash
 # Record an LLM cost event manually
+# Required: agentId, provider, model, costCents, occurredAt
+# Optional: issueId, projectId, goalId, heartbeatRunId, billingCode, biller,
+#           billingType, inputTokens, cachedInputTokens, outputTokens
 curl -s -X POST "$BASE/api/companies/$CID/cost-events" \
   -H "Content-Type: application/json" \
   -d '{
     "agentId": "agent-uuid-here",
     "provider": "anthropic",
     "model": "claude-opus-4-5",
+    "biller": "anthropic",
+    "billingType": "tokens",
     "inputTokens": 1500,
+    "cachedInputTokens": 200,
     "outputTokens": 300,
     "costCents": 12,
     "occurredAt": "2024-01-15T10:30:00Z"
@@ -195,28 +201,24 @@ Valid `windowKind` values: `calendar_month_utc`, `lifetime`
 
 When a hard stop fires, affected agents are paused and an incident is created.
 
+Valid `action` values: `keep_paused` | `raise_budget_and_resume`.
+
 ```bash
 # See active incidents in the budget overview
-curl -s "$BASE/api/companies/$CID/budgets/overview" | jq '.incidents'
+curl -s "$BASE/api/companies/$CID/budgets/overview" | jq '.activeIncidents'
 
-# Acknowledge (note the issue without resuming)
+# Keep agents paused (acknowledge without resuming or raising the budget)
 curl -s -X POST "$BASE/api/companies/$CID/budget-incidents/$INCIDENT_ID/resolve" \
   -H "Content-Type: application/json" \
-  -d '{"action": "acknowledge", "decisionNote": "Noted — reviewing spend"}' | jq '.'
+  -d '{"action": "keep_paused"}' | jq '.'
 
 # Raise the budget limit and resume paused agents
 curl -s -X POST "$BASE/api/companies/$CID/budget-incidents/$INCIDENT_ID/resolve" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "raise_budget_and_resume",
-    "amount": 75000,
-    "decisionNote": "Approved extra $250 for sprint completion"
+    "amount": 75000
   }' | jq '.'
-
-# Dismiss without raising the budget
-curl -s -X POST "$BASE/api/companies/$CID/budget-incidents/$INCIDENT_ID/resolve" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "dismiss", "decisionNote": "Agent work is done — no resume needed"}' | jq '.'
 ```
 
 ---
@@ -228,14 +230,14 @@ curl -s -X POST "$BASE/api/companies/$CID/budget-incidents/$INCIDENT_ID/resolve"
    ```bash
    FROM=$(date -u +%Y-%m-01T00:00:00Z)
    TO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-   curl -s "$BASE/api/companies/$CID/costs/summary?from=$FROM&to=$TO" | jq '{totalCostCents, totalInputTokens, totalOutputTokens}'
+   curl -s "$BASE/api/companies/$CID/costs/summary?from=$FROM&to=$TO" | jq '{totalCostCents, totalInputTokens, totalOutputTokens, eventCount}'
    ```
 
 2. **Break down by agent to find top spenders**
 
    ```bash
    curl -s "$BASE/api/companies/$CID/costs/by-agent?from=$FROM&to=$TO" | \
-     jq 'sort_by(-.costCents) | .[0:5] | [.[] | {agentId, costCents}]'
+     jq 'sort_by(-.totalCostCents) | .[0:5] | [.[] | {agentId, agentName, totalCostCents}]'
    ```
 
 3. **Break down by provider to see where tokens are going**
@@ -251,7 +253,7 @@ curl -s -X POST "$BASE/api/companies/$CID/budget-incidents/$INCIDENT_ID/resolve"
 1. **Check current budget overview**
 
    ```bash
-   curl -s "$BASE/api/companies/$CID/budgets/overview" | jq '{policies: (.policies | length), activeIncidents: (.incidents | length)}'
+   curl -s "$BASE/api/companies/$CID/budgets/overview" | jq '{policies: (.policies | length), activeIncidents: (.activeIncidents | length), pausedAgentCount, pausedProjectCount}'
    ```
 
 2. **Create a company-level hard stop policy**

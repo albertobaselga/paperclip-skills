@@ -34,9 +34,11 @@ pnpm paperclipai agent get $AGENT_ID
 
 curl -s "$BASE/api/agents/$AGENT_ID" | jq '.'
 
-# Org chart
+# Org chart (JSON, SVG, PNG)
 curl -s "$BASE/api/companies/$CID/org" | jq '.'
 curl -s "$BASE/api/companies/$CID/org.svg" > org.svg
+curl -s "$BASE/api/companies/$CID/org.png" > org.png
+# Optional style query param: ?style=...
 ```
 
 ---
@@ -63,6 +65,10 @@ curl -s "$BASE/api/companies/$CID/adapters/claude_local/models" | jq '.'
 
 # Auto-detect the best model for an adapter
 curl -s "$BASE/api/companies/$CID/adapters/claude_local/detect-model" | jq '.'
+
+# Test that an adapter type is runnable in this environment (CLI installed, login OK, etc.)
+curl -s -X POST "$BASE/api/companies/$CID/adapters/claude_local/test-environment" \
+  -H "Content-Type: application/json" -d '{}' | jq '.'
 ```
 
 Common `adapterType` values: `claude_local`, `codex_local`, `gemini_local`, `cursor`, `opencode_local`, `pi_local`, `openclaw_gateway`
@@ -78,7 +84,7 @@ Common `adapterType` values: `claude_local`, `codex_local`, `gemini_local`, `cur
 3. **Hire the agent** — use board endpoint (direct) or governance endpoint (may need approval)
 4. **Approve if needed** — if status is `pending_approval`, approve via the approvals API
 
-#### Direct hire (board operator, no approval gate):
+#### Direct create (board operator only, bypasses governance):
 
 ```bash
 curl -s -X POST "$BASE/api/companies/$CID/agents" \
@@ -87,24 +93,20 @@ curl -s -X POST "$BASE/api/companies/$CID/agents" \
     "name": "Alice",
     "role": "engineer",
     "title": "Senior Engineer",
-    "icon": "robot",
     "reportsTo": null,
     "adapterType": "claude_local",
-    "adapterConfig": {
-      "model": "claude-opus-4-5"
-    },
+    "adapterConfig": {"model": "claude-opus-4-6"},
     "runtimeConfig": {},
     "budgetMonthlyCents": 5000,
-    "permissions": {
-      "canCreateAgents": false,
-      "canAssignTasks": true
-    },
-    "capabilities": [],
+    "capabilities": "TypeScript, React",
+    "desiredSkills": [],
     "metadata": {}
   }' | jq '.'
 ```
 
-#### Hire with governance (may require approval):
+Note: the create payload does NOT accept `permissions`. Set permissions in a follow-up call to `PATCH /api/agents/{agentId}/permissions` (see "Updating Agent Configuration" below).
+
+#### Hire with governance (approval-aware, preferred):
 
 ```bash
 curl -s -X POST "$BASE/api/companies/$CID/agent-hires" \
@@ -115,11 +117,15 @@ curl -s -X POST "$BASE/api/companies/$CID/agent-hires" \
     "title": "Product Manager",
     "adapterType": "gemini_local",
     "adapterConfig": {"model": "gemini-2.5-pro"},
+    "runtimeConfig": {},
     "budgetMonthlyCents": 3000,
+    "desiredSkills": ["planning", "roadmapping"],
     "sourceIssueId": "issue-uuid-here",
-    "desiredSkills": ["planning", "roadmapping"]
+    "sourceIssueIds": []
   }' | jq '.'
 ```
+
+Response shape: `{ "agent": {...}, "approval": null|{...} }`. When `approval` is non-null, the agent is created as `pending_approval` and a board approval must resolve before the agent can run.
 
 Valid `role` values: `ceo`, `cto`, `cmo`, `cfo`, `engineer`, `designer`, `pm`, `qa`, `devops`, `researcher`, `general`
 
@@ -130,15 +136,23 @@ Valid `status` values: `active`, `paused`, `idle`, `running`, `error`, `pending_
 ## Updating Agent Configuration
 
 ```bash
-# Update name, role, adapter config, budget, status
+# Update title, capabilities, runtime/adapter config, reportsTo
+# Allowed body fields: title?, capabilities?, runtimeConfig?, adapterConfig?,
+# reportsTo?, replaceAdapterConfig?  (permissions are NOT accepted here)
 curl -s -X PATCH "$BASE/api/agents/$AGENT_ID" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Lead Engineer",
-    "budgetMonthlyCents": 8000,
-    "adapterConfig": {"model": "claude-sonnet-4-5"},
-    "replaceAdapterConfig": true
+    "capabilities": "TypeScript, Rust, distributed systems",
+    "adapterConfig": {"model": "claude-sonnet-4-6"},
+    "replaceAdapterConfig": true,
+    "runtimeConfig": {}
   }' | jq '.'
+
+# Budgets are PATCHed separately:
+curl -s -X PATCH "$BASE/api/agents/$AGENT_ID/budgets" \
+  -H "Content-Type: application/json" \
+  -d '{"budgetMonthlyCents": 8000}' | jq '.'
 
 # Update permissions
 curl -s -X PATCH "$BASE/api/agents/$AGENT_ID/permissions" \
@@ -161,14 +175,20 @@ curl -s -X POST "$BASE/api/agents/$AGENT_ID/resume" | jq '.'
 curl -s -X POST "$BASE/api/agents/$AGENT_ID/terminate" | jq '.'
 
 # Wake / trigger agent
+# Required: source (timer|assignment|on_demand|automation), triggerDetail (manual|ping|callback|system)
 curl -s -X POST "$BASE/api/agents/$AGENT_ID/wakeup" \
   -H "Content-Type: application/json" \
   -d '{
-    "source": "manual",
+    "source": "on_demand",
+    "triggerDetail": "manual",
     "reason": "Operator-triggered wakeup",
     "payload": {},
     "forceFreshSession": false
   }' | jq '.'
+
+# Synchronous heartbeat invocation
+curl -s -X POST "$BASE/api/agents/$AGENT_ID/heartbeat/invoke" \
+  -H "Content-Type: application/json" -d '{}' | jq '.'
 
 # Delete agent permanently
 curl -s -X DELETE "$BASE/api/agents/$AGENT_ID" | jq '.'
@@ -307,7 +327,13 @@ curl -s -X DELETE "$BASE/api/agents/$AGENT_ID/instructions-bundle/file?path=old-
 ## Skills Available to Agent
 
 ```bash
+# List installed skills
 curl -s "$BASE/api/agents/$AGENT_ID/skills" | jq '.'
+
+# Sync the agent's desired skills (accepts skill IDs, canonical keys, or unique slugs)
+curl -s -X POST "$BASE/api/agents/$AGENT_ID/skills/sync" \
+  -H "Content-Type: application/json" \
+  -d '{"desiredSkills": ["planning", "roadmapping"]}' | jq '.'
 ```
 
 ---

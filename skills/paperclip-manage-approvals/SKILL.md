@@ -43,7 +43,7 @@ curl -s "$BASE/api/approvals/$APPROVAL_ID" | jq '.'
 curl -s "$BASE/api/approvals/$APPROVAL_ID/issues" | jq '.'
 ```
 
-Valid `status` values: `pending`, `revision_requested`, `approved`, `rejected`, `cancelled`
+Valid `status` values: `pending`, `revision_requested`, `approved`, `rejected`
 
 Valid `type` values: `hire_agent`, `approve_ceo_strategy`, `budget_override_required`, `request_board_approval`
 

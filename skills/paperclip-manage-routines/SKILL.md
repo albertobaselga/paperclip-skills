@@ -66,6 +66,8 @@ Valid `catchUpPolicy` values:
 - `skip_missed` — ignore missed schedule slots
 - `enqueue_missed_with_cap` — enqueue missed runs up to a cap
 
+Valid run statuses (returned from `/runs`): `received`, `coalesced`, `skipped`, `issue_created`, `completed`, `failed`.
+
 ---
 
 ## Updating a Routine
@@ -125,6 +127,8 @@ curl -s -X POST "$BASE/api/routines/$ROUTINE_ID/triggers" \
 
 Valid `signingMode` values: `bearer`, `hmac_sha256`, `github_hmac`, `none`
 
+Valid `replayWindowSec` range: 30 to 86400 seconds.
+
 ### Create an API Trigger
 
 ```bash
@@ -173,10 +177,13 @@ curl -s -X DELETE "$BASE/api/routine-triggers/$TRIGGER_ID" | jq '.'
 ### List Runs for a Routine
 
 ```bash
-curl -s "$BASE/api/routines/$ROUTINE_ID/runs" | jq '.'
+# default limit 50, max 200
+curl -s "$BASE/api/routines/$ROUTINE_ID/runs?limit=100" | jq '.'
 ```
 
 ### Manually Trigger a Run
+
+Returns `202 Accepted`. Optional body fields: `source`, `triggerId`, `payload`, `variables`, `projectId`, `assigneeAgentId`, `idempotencyKey`, `executionWorkspaceId`, `executionWorkspacePreference`, `executionWorkspaceSettings`.
 
 ```bash
 # Simple manual run
@@ -184,15 +191,17 @@ curl -s -X POST "$BASE/api/routines/$ROUTINE_ID/run" \
   -H "Content-Type: application/json" \
   -d '{"source": "manual"}' | jq '.'
 
-# With a specific trigger, payload, variables, and idempotency key
+# Full example with workspace override and idempotency
 curl -s -X POST "$BASE/api/routines/$ROUTINE_ID/run" \
   -H "Content-Type: application/json" \
   -d '{
+    "source": "operator",
     "triggerId": "trigger-uuid-here",
     "payload": {"ref": "refs/heads/main"},
     "variables": {"CHANNEL": "#ops"},
     "idempotencyKey": "deploy-2024-01-15-001",
-    "source": "operator"
+    "projectId": "project-uuid-here",
+    "executionWorkspacePreference": "isolated_workspace"
   }' | jq '.'
 ```
 

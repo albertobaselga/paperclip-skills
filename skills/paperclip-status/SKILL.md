@@ -25,21 +25,8 @@ export COMPANY_ID=<your-company-id>
 curl -s $BASE/api/health | jq
 ```
 
-Returns: `version`, database status, deployment mode, and feature flags.
-
-### Instance settings
-
-```bash
-curl -s $BASE/api/instance/settings/general | jq
-```
-
-### Scheduler heartbeat
-
-```bash
-curl -s $BASE/api/instance/scheduler-heartbeats | jq
-```
-
-Use this to confirm background job workers are alive. A stale heartbeat timestamp indicates the scheduler has stopped.
+Returns server + database health. Use a non-200 response or unhealthy `db`
+field as the signal to escalate.
 
 ### Full diagnostics (CLI)
 
@@ -53,15 +40,32 @@ Runs preflight checks: DB connectivity, migrations, storage, LLM reachability, a
 
 ## Dashboard Summary
 
+### Via API
+
+```bash
+curl -s $BASE/api/companies/$COMPANY_ID/dashboard | jq
+```
+
+Returns the canonical dashboard shape:
+
+```json
+{
+  "companyId": "...",
+  "agents":  { "active": 0, "running": 0, "paused": 0, "error": 0 },
+  "tasks":   { "open": 0, "inProgress": 0, "blocked": 0, "done": 0 },
+  "costs":   { "monthSpendCents": 0, "monthBudgetCents": 0, "monthUtilizationPercent": 0 },
+  "pendingApprovals": 0,
+  "budgets": { "activeIncidents": 0, "pendingApprovals": 0, "pausedAgents": 0, "pausedProjects": 0 }
+}
+```
+
 ### Via CLI
 
 ```bash
 pnpm paperclipai dashboard get -C $COMPANY_ID
 ```
 
-Returns: agent counts (active, paused, errored), open issue stats, monthly cost utilization, and approval queue depth.
-
-### Aggregate company stats
+### Aggregate company stats (board)
 
 ```bash
 curl -s $BASE/api/companies/stats | jq
@@ -69,37 +73,11 @@ curl -s $BASE/api/companies/stats | jq
 
 ---
 
-## Live Agent Runs
-
-```bash
-curl -s $BASE/api/companies/$COMPANY_ID/live-runs | jq
-```
-
-Lists all currently executing agent runs for the company. Each entry includes `runId`, `agentId`, `startedAt`, and current `status`.
-
----
-
-## Sidebar Alert Badges
-
-```bash
-curl -s $BASE/api/companies/$COMPANY_ID/sidebar-badges | jq
-```
-
-Returns badge counts for:
-
-| Badge key       | Meaning                                      |
-|-----------------|----------------------------------------------|
-| `inbox`         | Unread notifications                         |
-| `approvals`     | Pending board approval requests              |
-| `joinRequests`  | Pending user join requests                   |
-| `failedRuns`    | Agent runs that ended in error               |
-| `alerts`        | Active system/policy alerts                  |
-
----
-
 ## Activity Feed
 
 ### Via API
+
+Supported query params: `agentId`, `entityType`, `entityId`.
 
 ```bash
 curl -s "$BASE/api/companies/$COMPANY_ID/activity" | jq
@@ -115,6 +93,13 @@ curl -s "$BASE/api/companies/$COMPANY_ID/activity?agentId=<agent-id>" | jq
 
 ```bash
 curl -s "$BASE/api/companies/$COMPANY_ID/activity?entityType=issue&entityId=<issue-id>" | jq
+```
+
+#### Per-issue activity / runs
+
+```bash
+curl -s "$BASE/api/issues/<issue-id>/activity" | jq
+curl -s "$BASE/api/issues/<issue-id>/runs" | jq
 ```
 
 ### Via CLI
@@ -134,16 +119,94 @@ export BASE=${PAPERCLIP_API_URL:-http://localhost:3100}
 export COMPANY_ID=<your-company-id>
 
 echo "=== 1. Health ===" && \
-  curl -s $BASE/api/health | jq '{version: .version, db: .database, mode: .deploymentMode}'
+  curl -s $BASE/api/health | jq
 
 echo "=== 2. Dashboard ===" && \
-  pnpm paperclipai dashboard get -C $COMPANY_ID
+  curl -s $BASE/api/companies/$COMPANY_ID/dashboard | \
+    jq '{agents, tasks, costs, pendingApprovals, budgets}'
 
-echo "=== 3. Live Runs ===" && \
-  curl -s $BASE/api/companies/$COMPANY_ID/live-runs | jq 'length as $n | "Active runs: \($n)"'
+echo "=== 3. Recent Activity ===" && \
+  curl -s "$BASE/api/companies/$COMPANY_ID/activity" | jq 'length as $n | "Activity entries: \($n)"'
 ```
 
 If health returns a non-200 or `db` shows unhealthy, run `pnpm paperclipai doctor --repair` before investigating further.
+
+---
+
+## Live Runs & Sidebar Badges
+
+> `/live-runs`, `/sidebar-badges`, `/heartbeat-runs`, and `/api/instance/scheduler-heartbeats` are present in `server/src/routes/` but not yet covered by the canonical public API reference. Treat as undocumented/may change.
+
+```bash
+# Live agent runs (per company)
+curl -s "$BASE/api/companies/$COMPANY_ID/live-runs" | jq
+
+# Active run on a specific issue
+curl -s "$BASE/api/issues/<issue-id>/active-run" | jq
+curl -s "$BASE/api/issues/<issue-id>/live-runs" | jq
+
+# Heartbeat runs list
+curl -s "$BASE/api/companies/$COMPANY_ID/heartbeat-runs" | jq
+
+# Sidebar badges (alert counts)
+curl -s "$BASE/api/companies/$COMPANY_ID/sidebar-badges" | jq
+
+# Scheduler heartbeats (instance-level)
+curl -s "$BASE/api/instance/scheduler-heartbeats" | jq
+```
+
+---
+
+## Instance Admin (public)
+
+Instance-wide settings, backups, and LLM configuration dumps. Settings PATCH endpoints validate against `patchInstanceGeneralSettingsSchema` / `patchInstanceExperimentalSettingsSchema`. Database backups require instance-admin.
+
+```bash
+# General settings
+curl -s "$BASE/api/instance/settings/general" | jq
+curl -s -X PATCH "$BASE/api/instance/settings/general" \
+  -H "Content-Type: application/json" -d '{ ... }' | jq
+
+# Experimental settings
+curl -s "$BASE/api/instance/settings/experimental" | jq
+curl -s -X PATCH "$BASE/api/instance/settings/experimental" \
+  -H "Content-Type: application/json" -d '{ ... }' | jq
+
+# Issue-graph liveness auto-recovery (preview vs. run)
+curl -s -X POST "$BASE/api/instance/settings/experimental/issue-graph-liveness-auto-recovery/preview" | jq
+curl -s -X POST "$BASE/api/instance/settings/experimental/issue-graph-liveness-auto-recovery/run" | jq
+
+# Database backup (instance-admin only)
+curl -s -X POST "$BASE/api/instance/database-backups" | jq
+```
+
+### LLM agent-configuration text dumps
+
+Public plain-text endpoints for tooling/agents:
+
+```bash
+curl -s "$BASE/api/llms/agent-configuration.txt"
+curl -s "$BASE/api/llms/agent-configuration/<adapterType>.txt"
+curl -s "$BASE/api/llms/agent-icons.txt"
+```
+
+---
+
+## Execution Workspaces (public)
+
+```bash
+# List execution workspaces for a company
+curl -s "$BASE/api/companies/$COMPANY_ID/execution-workspaces" | jq
+
+# Inspect a workspace
+curl -s "$BASE/api/execution-workspaces/<id>" | jq
+curl -s "$BASE/api/execution-workspaces/<id>/close-readiness" | jq
+curl -s "$BASE/api/execution-workspaces/<id>/workspace-operations" | jq
+
+# Runtime services / commands (action: start | stop | restart)
+curl -s -X POST "$BASE/api/execution-workspaces/<id>/runtime-services/start" | jq
+curl -s -X POST "$BASE/api/execution-workspaces/<id>/runtime-commands/restart" | jq
+```
 
 ---
 
@@ -152,12 +215,20 @@ If health returns a non-200 or `db` shows unhealthy, run `pnpm paperclipai docto
 | Resource                        | Command/Endpoint                                                        |
 |---------------------------------|-------------------------------------------------------------------------|
 | Health                          | `GET $BASE/api/health`                                                  |
-| Instance settings               | `GET $BASE/api/instance/settings/general`                               |
-| Scheduler heartbeats            | `GET $BASE/api/instance/scheduler-heartbeats`                           |
 | Diagnostics                     | `pnpm paperclipai doctor`                                               |
-| Dashboard summary               | `pnpm paperclipai dashboard get -C $COMPANY_ID`                         |
-| Company stats                   | `GET $BASE/api/companies/stats`                                         |
-| Live runs                       | `GET $BASE/api/companies/$COMPANY_ID/live-runs`                         |
-| Sidebar badges                  | `GET $BASE/api/companies/$COMPANY_ID/sidebar-badges`                    |
-| Activity feed (API)             | `GET $BASE/api/companies/$COMPANY_ID/activity`                          |
+| Dashboard (API)                 | `GET $BASE/api/companies/$COMPANY_ID/dashboard`                         |
+| Dashboard (CLI)                 | `pnpm paperclipai dashboard get -C $COMPANY_ID`                         |
+| Company stats (board)           | `GET $BASE/api/companies/stats`                                         |
+| Activity feed (API)             | `GET $BASE/api/companies/$COMPANY_ID/activity` (q: agentId, entityType, entityId) |
+| Issue activity / runs           | `GET $BASE/api/issues/{issueId}/activity`, `/runs`                      |
 | Activity feed (CLI)             | `pnpm paperclipai activity list -C $COMPANY_ID`                         |
+| Live runs (undocumented)        | `GET $BASE/api/companies/$COMPANY_ID/live-runs`                         |
+| Sidebar badges (undocumented)   | `GET $BASE/api/companies/$COMPANY_ID/sidebar-badges`                    |
+| Heartbeat runs (undocumented)   | `GET $BASE/api/companies/$COMPANY_ID/heartbeat-runs`                    |
+| Scheduler heartbeats (undocumented) | `GET $BASE/api/instance/scheduler-heartbeats`                       |
+| Instance general settings       | `GET/PATCH $BASE/api/instance/settings/general`                         |
+| Instance experimental settings  | `GET/PATCH $BASE/api/instance/settings/experimental`                    |
+| Database backup                 | `POST $BASE/api/instance/database-backups` (instance-admin)             |
+| LLM agent configuration         | `GET $BASE/api/llms/agent-configuration.txt`, `/:adapterType.txt`, `/agent-icons.txt` |
+| Execution workspaces            | `GET $BASE/api/companies/$COMPANY_ID/execution-workspaces`              |
+| Workspace runtime actions       | `POST $BASE/api/execution-workspaces/:id/runtime-services/:action`, `/runtime-commands/:action` |

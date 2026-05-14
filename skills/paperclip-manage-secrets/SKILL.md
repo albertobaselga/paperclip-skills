@@ -20,14 +20,10 @@ CID="<your-company-id>"
 
 ## Secret Providers
 
-Paperclip supports multiple backend providers for secret storage:
-
-| Provider | Key |
-|---|---|
-| Encrypted local store | `local_encrypted` |
-| AWS Secrets Manager | `aws_secrets_manager` |
-| GCP Secret Manager | `gcp_secret_manager` |
-| HashiCorp Vault | `vault` |
+Paperclip supports multiple backend providers for secret storage. The set of
+available providers is instance-configured — call the providers endpoint to
+discover what is enabled on this instance (typical keys include
+`local_encrypted`, `aws_secrets_manager`, `gcp_secret_manager`, `vault`).
 
 ### List Available Providers
 
@@ -51,9 +47,9 @@ Returns all secrets for the company. Values are never returned in plaintext — 
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | yes | Identifier used in env bindings |
-| `provider` | yes | One of the provider keys above |
+| `name` | yes | Unique identifier used in env bindings |
 | `value` | yes | The secret value (stored encrypted) |
+| `provider` | no | One of the provider keys (defaults to instance default) |
 | `description` | no | Human-readable note |
 | `externalRef` | no | External resource path (e.g. AWS ARN, Vault path) |
 
